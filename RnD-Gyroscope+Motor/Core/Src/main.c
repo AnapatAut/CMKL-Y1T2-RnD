@@ -157,12 +157,22 @@ void checkAngle(int angle)
 		if(fabs(gyro) > gyroMargin)
 			sum += gyro;
 
-		value = sum * 0.05;
+		value = sum * 0.02;
 		sprintf(buffer, "\rAngle: %.2f\n", value);
 		HAL_UART_Transmit(&huart2, buffer, strlen(buffer), HAL_MAX_DELAY);
 		if(((angle > 0) && (value >= angle)) || ((angle < 0) && (value <= angle)))
 			break;
+		HAL_Delay(10);
 	}
+}
+
+int getSensor(void)
+{
+	int infared = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5);
+	if(infared == 0)
+		return 1;
+
+		return 0;
 }
 
 void forwardControl(int time)
@@ -174,6 +184,9 @@ void forwardControl(int time)
 
 	while(timer_val < time)
 	{
+		if(getSensor() == 0)
+			return;
+
 		MPU6050_Read_Gyro();
 		if(fabs(gyro) > gyroMargin)
 			sum += gyro;
@@ -218,10 +231,10 @@ void stop(void)
 
 void forward(int time)
 {
-	char buffer[16];
 	time = time * 500;
 	forwardControl(time);
 	stop();
+	HAL_Delay(100);
 }
 
 void backward(int time)
@@ -232,6 +245,7 @@ void backward(int time)
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);	// Left motor 2
 	HAL_Delay(time);
 	stop();
+	HAL_Delay(100);
 }
 
 void left(int angle)
@@ -242,6 +256,7 @@ void left(int angle)
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 1);	// Left motor 2
 	checkAngle(angle);
 	stop();
+	HAL_Delay(100);
 }
 
 void right(int angle)
@@ -252,6 +267,7 @@ void right(int angle)
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);	// Left motor 2
 	checkAngle(-angle);
 	stop();
+	HAL_Delay(100);
 }
 /* USER CODE END 0 */
 
@@ -297,6 +313,8 @@ int main(void)
     HAL_TIM_Base_Start(&htim16);
 
     forward(1);
+    left(90);
+    forward(5);
 
   /* USER CODE END 2 */
 
@@ -304,8 +322,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 //        while(1)
 //        {
-//            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 1);
-//            HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 1);
+//
 //        }
     /* USER CODE END WHILE */
 
@@ -500,6 +517,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA5 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PA6 PA7 PA8 PA9 */
   GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
