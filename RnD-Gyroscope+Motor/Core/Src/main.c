@@ -52,7 +52,7 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
-TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim16;
 
 UART_HandleTypeDef huart2;
 
@@ -60,6 +60,7 @@ UART_HandleTypeDef huart2;
 int16_t gyro_raw = 0;
 
 float gyro, gyroOffset, gyroMargin = 0;
+uint16_t timer_val;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,7 +68,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_TIM2_Init(void);
+static void MX_TIM16_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -103,7 +104,7 @@ void MPU6050_Init(void)
     {
     	//Reset and look for MPU6050 again
         HAL_NVIC_SystemReset();
-        HAL_Delay(1000);
+        HAL_Delay(1200);
     }
 }
 
@@ -145,7 +146,7 @@ void MPU6050_Calibrate(void)
     HAL_UART_Transmit(&huart2, buffer, strlen(buffer), HAL_MAX_DELAY);
 }
 
-void getAngle(int angle)
+void checkAngle(int angle)
 {
 	char buffer[16];
 	float value, sum = 0;
@@ -161,8 +162,50 @@ void getAngle(int angle)
 		HAL_UART_Transmit(&huart2, buffer, strlen(buffer), HAL_MAX_DELAY);
 		if(((angle > 0) && (value >= angle)) || ((angle < 0) && (value <= angle)))
 			break;
-		HAL_Delay(50);
 	}
+}
+
+void forwardControl(int time)
+{
+	char buffer[16];
+	float value, sum = 0;
+	uint16_t base_time = __HAL_TIM_GET_COUNTER(&htim16);
+	timer_val = __HAL_TIM_GET_COUNTER(&htim16) - base_time;
+
+	while(timer_val < time)
+	{
+		MPU6050_Read_Gyro();
+		if(fabs(gyro) > gyroMargin)
+			sum += gyro;
+
+		value = sum * 0.001;
+		sprintf(buffer, "\rAngle: %.2f\n", value);
+		HAL_UART_Transmit(&huart2, buffer, strlen(buffer), HAL_MAX_DELAY);
+		if(value <= -1)
+		{
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 1);	// Right motor 1
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 0);	// Right motor 2
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 1);	// Left motor 1
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 1);	// Left motor 2
+		}
+		else if(value >= 1)
+		{
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 1);	// Right motor 1
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 1);	// Right motor 2
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 1);	// Left motor 1
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);	// Left motor 2
+		}
+		else
+		{
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 1);	// Right motor 1
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 0);	// Right motor 2
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 1);	// Left motor 1
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);	// Left motor 2
+		}
+		timer_val = __HAL_TIM_GET_COUNTER(&htim16) - base_time;
+	}
+	sprintf(buffer, "\r%d\n", timer_val);
+	HAL_UART_Transmit(&huart2, buffer, strlen(buffer), HAL_MAX_DELAY);
 }
 
 void stop(void)
@@ -175,11 +218,9 @@ void stop(void)
 
 void forward(int time)
 {
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, 0);	// Right motor 1
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 1);	// Right motor 2
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 0);	// Left motor 1
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 1);	// Left motor 2
-	HAL_Delay(time);
+	char buffer[16];
+	time = time * 500;
+	forwardControl(time);
 	stop();
 }
 
@@ -199,7 +240,7 @@ void left(int angle)
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 0);	// Right motor 2
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 1);	// Left motor 1
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 1);	// Left motor 2
-	getAngle(angle);
+	checkAngle(angle);
 	stop();
 }
 
@@ -209,7 +250,7 @@ void right(int angle)
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_7, 1);	// Right motor 2
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, 1);	// Left motor 1
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, 0);	// Left motor 2
-	getAngle(-angle);
+	checkAngle(-angle);
 	stop();
 }
 /* USER CODE END 0 */
@@ -244,16 +285,18 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
-  MX_TIM2_Init();
+  MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
 	stop();
+	MPU6050_Init();
+	HAL_Delay(1000);
   	while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) != 0);
-  	HAL_Delay(1000);
-    MPU6050_Init();
+  	HAL_Delay(400);
     MPU6050_Calibrate();
-    HAL_Delay(1000);
+    HAL_Delay(200);
+    HAL_TIM_Base_Start(&htim16);
 
-    left(90);
+    forward(1);
 
   /* USER CODE END 2 */
 
@@ -368,61 +411,34 @@ static void MX_I2C1_Init(void)
 }
 
 /**
-  * @brief TIM2 Initialization Function
+  * @brief TIM16 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_TIM2_Init(void)
+static void MX_TIM16_Init(void)
 {
 
-  /* USER CODE BEGIN TIM2_Init 0 */
+  /* USER CODE BEGIN TIM16_Init 0 */
 
-  /* USER CODE END TIM2_Init 0 */
+  /* USER CODE END TIM16_Init 0 */
 
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
+  /* USER CODE BEGIN TIM16_Init 1 */
 
-  /* USER CODE BEGIN TIM2_Init 1 */
-
-  /* USER CODE END TIM2_Init 1 */
-  htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 127;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 625;
-  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  /* USER CODE END TIM16_Init 1 */
+  htim16.Instance = TIM16;
+  htim16.Init.Prescaler = 8000-1;
+  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim16.Init.Period = 10000-1;
+  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim16.Init.RepetitionCounter = 0;
+  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
   {
     Error_Handler();
   }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM2_Init 2 */
+  /* USER CODE BEGIN TIM16_Init 2 */
 
-  /* USER CODE END TIM2_Init 2 */
-  HAL_TIM_MspPostInit(&htim2);
+  /* USER CODE END TIM16_Init 2 */
 
 }
 
@@ -477,7 +493,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_SET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -489,7 +505,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pin = GPIO_PIN_6|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_MEDIUM;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
 }
