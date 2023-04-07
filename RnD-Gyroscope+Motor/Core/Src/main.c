@@ -172,7 +172,7 @@ int getSensor(void)
 	if(infared == 0)
 		return 1;
 
-		return 0;
+	return 0;
 }
 
 void forwardControl(int time)

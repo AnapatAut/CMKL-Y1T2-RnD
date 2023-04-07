@@ -37,13 +37,13 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  16 .debug_macro  00027f9f  00000000  00000000  00035ef8  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   00013499  00000000  00000000  0005de97  2**0
+ 17 .debug_line   0001349b  00000000  00000000  0005de97  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    000f6cf4  00000000  00000000  00071330  2**0
+ 18 .debug_str    000f6cf4  00000000  00000000  00071332  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000050  00000000  00000000  00168024  2**0
+ 19 .comment      00000050  00000000  00000000  00168026  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  000058e0  00000000  00000000  00168074  2**2
+ 20 .debug_frame  000058e0  00000000  00000000  00168078  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -1709,7 +1709,7 @@ int getSensor(void)
  80012f2:	2301      	movs	r3, #1
  80012f4:	e000      	b.n	80012f8 <getSensor+0x20>
 
-		return 0;
+	return 0;
  80012f6:	2300      	movs	r3, #0
 }
  80012f8:	4618      	mov	r0, r3
